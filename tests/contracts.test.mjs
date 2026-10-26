@@ -99,3 +99,13 @@ test('self-hosted and Vercel builds use the appropriate output adapters',async()
  const config=JSON.parse(await readFile(new URL('../vercel.json',import.meta.url),'utf8'));
  assert.equal(config.env.DJANGO_API_ORIGIN,'https://api.imsuth.site');
 });
+
+test('login uses session CSRF when the cookie path excludes the login page',async()=>{
+ const previousFetch=globalThis.fetch,previousDocument=globalThis.document;
+ const calls=[];globalThis.document={cookie:''};
+ globalThis.fetch=async(url,options)=>{calls.push({url,options});return Response.json(url.endsWith('/session/')?{authenticated:false,csrf_token:'synthetic-session-csrf'}:{authenticated:true,csrf_token:'synthetic-rotated-csrf'});};
+ try {const {login}=await import('../lib/api.js');await login('synthetic','synthetic');
+ assert.equal(calls.length,2);assert.equal(calls[0].url,'/paypoint/api/v1/session/');
+ assert.equal(calls[1].options.headers.get('X-CSRFToken'),'synthetic-session-csrf');
+ }finally{globalThis.fetch=previousFetch;if(previousDocument===undefined)delete globalThis.document;else globalThis.document=previousDocument;}
+});
