@@ -5,3 +5,15 @@
 .next-recovery form {display:grid;gap:1rem;}
 .login-options a {color:var(--primary,#005bff);font-size:14px;}
 .static-login .login-tools>span {color:#052f43;font-weight:600;}
+
+/* Live overview coverage: compact metrics and a responsive four-panel grid. */
+.overview-coverage-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;margin-bottom:16px}
+.overview-preview-kpis{grid-template-columns:repeat(auto-fit,minmax(170px,1fr))!important}
+.overview-daily-bars{display:flex;gap:5px;overflow-x:auto;min-height:220px;padding:12px 0}
+.overview-daily-column{flex:1;min-width:12px;max-width:32px;text-align:center}
+.overview-daily-stack{height:180px;display:flex;flex-direction:column-reverse;justify-content:flex-start;background:var(--surface-muted,#eff5fa)}
+.overview-daily-stack i{display:block;flex-shrink:0;width:100%}
+.overview-daily-column small{font-size:9px;white-space:nowrap;writing-mode:vertical-rl}
+.overview-reconciliation-row{display:grid;grid-template-columns:1fr auto;gap:8px;margin:16px 0}
+.overview-reconciliation-row progress{grid-column:1/-1;width:100%;height:14px;accent-color:#00a995}
+@media(max-width:760px){.overview-coverage-grid{grid-template-columns:1fr}.overview-preview-kpis{grid-template-columns:repeat(2,minmax(0,1fr))!important}}

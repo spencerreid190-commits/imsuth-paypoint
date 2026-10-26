@@ -12,15 +12,41 @@ export async function refreshOverview(root, escapeHtml, moneyWhole) {
       if(current!==sequence||!root.isConnected)return;
       root.querySelector('[data-overview-kpis]').innerHTML=[['Verified Collection',moneyWhole(summary.verified_collections),'Confirmation date · NGN'],['Total Attempts',summary.transactions,'Creation date'],['Verified Transactions',summary.verified_transactions,'Confirmation date'],['Pending / Unverified',moneyWhole(summary.pending_amount),'Not collected revenue'],['Departments',summary.active_departments,'Active, permitted departments']].map(([name,value,note])=>`<article><div><span>${escapeHtml(name)}</span><strong>${escapeHtml(value)}</strong><small>${escapeHtml(note)}</small></div></article>`).join('');
       const colours=['#1687ff','#00a995','#ff922c','#f53883','#a55bff'];
-      const donut=(rows,total,key,valueKey,center)=>{let angle=0;const stops=rows.map((r,i)=>{const start=angle;angle+=total?Number(r[valueKey])/total*100:0;return `${colours[i%colours.length]} ${start}% ${angle}%`;});return `<div class="finance-donut" data-chart-background="${total?`conic-gradient(${stops.join(',')})`:'#e8eef5'}"><div><strong>${escapeHtml(center)}</strong><span>Selected period</span></div></div><div class="finance-department-legend">${rows.map((r,i)=>`<div><span data-chart-colour="${colours[i%colours.length]}">${escapeHtml(r[key])}</span><b>${valueKey==='amount'?moneyWhole(r[valueKey]):r[valueKey]}</b></div>`).join('')||'<p>No activity in this period.</p>'}</div>`;};
+      const donut=(rows,total,key,valueKey,center)=>{let angle=0;const stops=rows.map((r,i)=>{const start=angle;angle+=total?Number(r[valueKey])/total*100:0;return `${r.colour||colours[i%colours.length]} ${start}% ${angle}%`;});return `<div class="finance-donut" data-chart-background="${total?`conic-gradient(${stops.join(',')})`:'#e8eef5'}"><div><strong>${escapeHtml(center)}</strong><span>Selected period</span></div></div><div class="finance-department-legend">${rows.map((r,i)=>`<div><span data-chart-colour="${r.colour||colours[i%colours.length]}">${escapeHtml(r[key])}</span><b>${valueKey==='amount'?moneyWhole(r[valueKey]):r[valueKey]}</b></div>`).join('')||'<p>No activity in this period.</p>'}</div>`;};
       root.querySelector('[data-overview-channels]').innerHTML=donut(channels,Number(summary.verified_collections),'channel','amount',moneyWhole(summary.verified_collections));
       const max=Math.max(1,...departments.map(r=>Number(r.amount)));
-      root.querySelector('[data-overview-departments]').innerHTML=departments.slice(0,7).map((r,i)=>`<div class="overview-department-row"><span>${escapeHtml(r.invoice__department__name)}</span><div><i data-chart-width="${Number(r.amount)/max*100}%" data-chart-background="${colours[i%colours.length]}"></i></div><b>${moneyWhole(r.amount)}</b></div>`).join('')||'<p>No departmental collections.</p>';
+      root.querySelector('[data-overview-departments]').innerHTML=departments.slice(0,8).map((r,i)=>`<div class="overview-department-row"><span>${escapeHtml(r.invoice__department__name)}</span><div><i data-chart-width="${Number(r.amount)/max*100}%" data-chart-background="${colours[i%colours.length]}"></i></div><b>${moneyWhole(r.amount)}</b></div>`).join('')||'<p>No departmental collections.</p>';
       root.querySelector('[data-overview-status]').innerHTML=donut(statuses,summary.transactions,'status','count',String(summary.transactions));
       root.querySelector('[data-overview-alert-count]').textContent=String(alerts.open+alerts.in_review);
       root.querySelector('[data-overview-alerts]').innerHTML=Object.entries(alerts).map(([k,n])=>`<a class="overview-alert-row" href="#alerts"><span>${escapeHtml(k.replaceAll('_',' '))}</span><b>${n}</b></a>`).join('');
+      await renderOverviewCoverage(root,summary,channels,departments,alerts,query,escapeHtml,moneyWhole,donut,current,()=>sequence);
     }catch(error){const note=root.querySelector('.overview-preview-note');note.textContent=error.message;root.querySelector('[data-overview-kpis]').textContent='Authoritative totals could not be loaded.';}
   };select.addEventListener('change',refresh);await refresh();
+}
+
+async function renderOverviewCoverage(root,summary,channels,departments,alerts,query,escapeHtml,moneyWhole,donut,current,sequence) {
+  const names={pos:'POS / card',bank_transfer:'Bank transfer',bank_teller:'Bank teller',ussd:'USSD',cash:'Cash',online:'Online gateway'};
+  const colours=['#1687ff','#00a995','#ff922c','#f53883','#a55bff','#7089a6'];
+  const channelRows=Object.entries(names).map(([channel,label])=>({channel:label,...channels.find(r=>r.channel===channel),label}));
+  const total=Number(summary.verified_collections);
+  const cards=[['Collected',moneyWhole(total),`${summary.verified_transactions} confirmed payments`],...channelRows.map(r=>[r.label,moneyWhole(r.amount||0),`${total?(Number(r.amount||0)/total*100).toFixed(1):'0.0'}% of collections`]),['Open alerts',alerts.open+alerts.in_review,'Awaiting review']];
+  const kpis=root.querySelector('[data-overview-kpis]');
+  kpis.innerHTML=cards.map(([name,value,note])=>`<article><div><span>${escapeHtml(name)}</span><strong>${escapeHtml(value)}</strong><small>${escapeHtml(note)}</small></div></article>`).join('');
+  root.querySelector('[data-overview-channels]').innerHTML=donut(channels.map(r=>({...r,colour:colours[Object.keys(names).indexOf(r.channel)]||colours[0],channel:(names[r.channel]||r.channel)+' ('+(total?Number(r.amount)/total*100:0).toFixed(1)+'%)'})),total,'channel','amount',moneyWhole(total));
+  try {
+    const data=await api('dashboard/overview-coverage/'+query);
+    if(current!==sequence()||!root.isConnected)return;
+    const reconciliation=data.reconciliation;
+    kpis.insertAdjacentHTML('beforeend',`<article><div><span>Approved cash orders</span><strong>${moneyWhole(data.cash_orders.amount)}</strong><small>${data.cash_orders.count} orders · separate from collected revenue</small></div></article>`);
+    kpis.insertAdjacentHTML('beforeend',`<article><div><span>Unmatched / under review</span><strong>${moneyWhole(reconciliation.unmatched_amount)}</strong><small>${reconciliation.unmatched+reconciliation.pending} imported statement rows</small></div></article>`);
+    root.querySelector('[data-overview-reconciliation]').innerHTML=[['Matched',reconciliation.matched],['Pending review',reconciliation.pending],['Unmatched',reconciliation.unmatched]].map(([label,count])=>`<div class="overview-reconciliation-row"><span>${label}</span><b>${count} of ${reconciliation.total}</b><progress max="${Math.max(1,reconciliation.total)}" value="${count}" aria-label="${label}"></progress></div>`).join('')+`<p>${reconciliation.total?'Imported NGN statement rows for the selected period.':'No bank or POS statement rows imported for this period.'}</p><p>${reconciliation.aged_unmatched} unresolved rows are older than 24 hours.</p>`;
+    const recordedDays=[...new Set(data.daily_channels.map(r=>r.day))];
+    const days=[];const first=data.period.start||recordedDays[0];
+    if(first){const cursor=new Date(first+'T00:00:00Z'),end=new Date(data.period.end+'T00:00:00Z');for(;cursor<=end;cursor.setUTCDate(cursor.getUTCDate()+1))days.push(cursor.toISOString().slice(0,10));}
+    const totals=days.map(day=>data.daily_channels.filter(r=>r.day===day).reduce((sum,r)=>sum+Number(r.amount),0));
+    const maximum=Math.max(1,...totals);
+    root.querySelector('[data-overview-daily]').innerHTML=days.length?`<div class="overview-daily-bars">${days.map((day,index)=>`<div class="overview-daily-column" title="${escapeHtml(day)}: ${moneyWhole(totals[index])}"><div class="overview-daily-stack">${Object.keys(names).map((channel,i)=>{const amount=data.daily_channels.filter(r=>r.day===day&&r.channel===channel).reduce((sum,r)=>sum+Number(r.amount),0);return `<i data-chart-height="${amount/maximum*100}%" data-chart-background="${colours[i]}" title="${escapeHtml(names[channel])}: ${moneyWhole(amount)}"></i>`;}).join('')}</div><small>${escapeHtml(day.slice(5))}</small></div>`).join('')}</div><p>Confirmed NGN collections · Africa/Lagos dates</p>`:'<p>No confirmed collections in this period.</p>';
+  }catch(error){root.querySelector('[data-overview-daily]').textContent='Daily channel data unavailable: '+error.message;root.querySelector('[data-overview-reconciliation]').textContent='Reconciliation data unavailable: '+error.message;}
 }
 
 export function watchPaymentStatus(id, isActive, onChange, holder) {
