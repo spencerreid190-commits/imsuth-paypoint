@@ -74,3 +74,16 @@ test('compressed upstream responses keep their encoding for the browser',async()
   const response=await proxyApi(new Request('https://staff.invalid/paypoint/api/v1/reports/revenue/'),['reports','revenue'],{origin:'http://backend:8000',fetcher:async()=>new Response(compressed,{headers:{'content-encoding':'gzip','content-type':'text/csv'}})});
   assert.equal(response.headers.get('content-encoding'),'gzip');assert.deepEqual(Buffer.from(await response.arrayBuffer()),compressed);
 });
+
+test('Vercel builds Next.js and redirects the domain root into PayPoint',async()=>{
+  const config=JSON.parse(await readFile(new URL('../vercel.json',import.meta.url),'utf8'));
+  assert.equal(config.framework,'nextjs');assert.equal(config.buildCommand,'npm run build:vercel');assert.equal(config.outputDirectory,'.next');
+  assert.deepEqual(config.redirects,[{source:'/',destination:'/paypoint',permanent:false}]);
+});
+test('self-hosted and Vercel builds use the appropriate output adapters',async()=>{
+  const {spawnSync}=await import('node:child_process');
+  for(const [flag,expected] of [['1',null],['0','standalone']]){
+    const result=spawnSync(process.execPath,['--input-type=module','-e',"import config from './next.config.mjs';console.log(JSON.stringify(config.output??null));"],{cwd:new URL('../',import.meta.url),encoding:'utf8',env:{...process.env,VERCEL:flag}});
+    assert.equal(result.status,0,result.stderr);assert.equal(JSON.parse(result.stdout),expected);
+  }
+});

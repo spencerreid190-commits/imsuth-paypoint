@@ -56,3 +56,12 @@ This Node service adds CPU/RAM demand to the previous Django-only hosting plan. 
 See `verification/RESULTS.md` for executed checks. Build and runtime checks are local only and do not certify the uninspected VPS.
 
 Framework references: [Next.js App Router installation](https://nextjs.org/docs/app/getting-started/installation), [nonce-based content policy](https://nextjs.org/docs/app/guides/content-security-policy).
+
+
+## Vercel deployment
+
+Import this repository as **Next.js**, with **Root Directory `.`** (the repository already contains PayPoint at its root), production branch `main`, and the default Node runtime supported by Next.js. `vercel.json` selects `npm ci`, `npm run build:vercel` and `.next` output; it redirects the domain root `/` to `/paypoint`. Do not configure this repository as a static HTML site or set the root to `website/paypoint`. The standalone packaging script is used only by the self-hosted build.
+
+Set the server-only `DJANGO_API_ORIGIN` Vercel environment variable to the approved, publicly reachable HTTPS Django API origin. `127.0.0.1` on Vercel is the Vercel function itself, not the Contabo server. Configure Django's allowed hostname, trusted HTTPS frontend origin and secure cookies for the deployed domain. No backend deployment, credentials or placeholder live origin are included here.
+
+If both `/` and `/paypoint` return Vercel's platform `NOT_FOUND`, confirm that a successful production deployment exists, its source is this repository's `main` branch, the root/framework settings above are correct, and `imsuth-paypoint.vercel.app` is attached to that deployment. A missing backend should produce a clear API-unavailable message, not a page 404.

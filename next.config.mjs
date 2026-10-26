@@ -1,7 +1,8 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   basePath: '/paypoint',
-  output: 'standalone',
+  // Vercel supplies its own serverless output adapter.
+  ...(process.env.VERCEL === '1' ? {} : {output: 'standalone'}),
   skipTrailingSlashRedirect: true,
   poweredByHeader: false,
   // The application is staff-only; API and session responses must never be shared.
