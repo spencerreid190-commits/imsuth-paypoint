@@ -10,5 +10,8 @@
       "destination": "/paypoint",
       "permanent": false
     }
-  ]
+  ],
+  "env": {
+    "DJANGO_API_ORIGIN": "https://api.imsuth.site"
+  }
 }

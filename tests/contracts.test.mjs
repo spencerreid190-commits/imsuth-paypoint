@@ -21,7 +21,7 @@ test('proxy preserves session cookies, CSRF, Origin, multipart content and statu
   const request=new Request('https://staging-paypoint.imsuth.org/paypoint/api/v1/patients/',{method:'POST',headers:{cookie:'sessionid=synthetic','x-csrftoken':'synthetic-csrf',origin:'https://staging-paypoint.imsuth.org','content-type':'application/json','x-forwarded-proto':'http'},body:JSON.stringify({first_name:'Synthetic'})});
   let forwarded;
   const response=await proxyApi(request,['patients'],{origin:'http://backend:8000',fetcher:async(url,options)=>{forwarded={url,...options};return new Response('{"id":"synthetic"}',{status:201,headers:{'content-type':'application/json','set-cookie':'sessionid=new-synthetic; HttpOnly; Path=/paypoint/'}});}});
-  assert.equal(response.status,201);assert.equal(forwarded.headers.get('cookie'),'sessionid=synthetic');assert.equal(forwarded.headers.get('host'),'staging-paypoint.imsuth.org');assert.equal(forwarded.headers.get('origin'),'https://staging-paypoint.imsuth.org');assert.equal(forwarded.headers.get('x-csrftoken'),'synthetic-csrf');assert.equal(forwarded.headers.get('x-forwarded-proto'),'https');assert.equal(forwarded.cache,'no-store');assert.match(response.headers.get('set-cookie'),/HttpOnly/);assert.equal(response.headers.get('cache-control'),'private, no-store');
+  assert.equal(response.status,201);assert.equal(forwarded.headers.get('cookie'),'sessionid=synthetic');assert.equal(forwarded.headers.get('host'),'backend:8000');assert.equal(forwarded.headers.get('origin'),'http://backend:8000');assert.equal(forwarded.headers.get('x-csrftoken'),'synthetic-csrf');assert.equal(forwarded.headers.get('x-forwarded-proto'),'https');assert.equal(forwarded.cache,'no-store');assert.match(response.headers.get('set-cookie'),/HttpOnly/);assert.equal(response.headers.get('cache-control'),'private, no-store');
 });
 test('proxy streams binary receipt/export responses without JSON conversion',async()=>{
   const data=new Uint8Array([37,80,68,70,0,255]);
@@ -29,7 +29,7 @@ test('proxy streams binary receipt/export responses without JSON conversion',asy
   assert.deepEqual(new Uint8Array(await response.arrayBuffer()),data);assert.equal(response.headers.get('content-type'),'application/pdf');
 });
 test('proxy rejects oversized uploads without contacting Django',async()=>{
-  const request=new Request('https://staff.invalid/paypoint/api/v1/profile/photo/',{method:'POST',headers:{'content-length':String(7*1024*1024)},body:'synthetic'});
+  const request=new Request('https://staff.invalid/paypoint/api/v1/profile/photo/',{method:'POST',headers:{origin:'https://staff.invalid','content-length':String(7*1024*1024)},body:'synthetic'});
   const response=await proxyApi(request,['profile','photo'],{origin:'http://backend:8000',fetcher:()=>{throw Error('Must not send');}});
   assert.equal(response.status,413);
 });
@@ -48,14 +48,14 @@ test('all navigation screens and legacy workflows have a retained controller',as
   assert.doesNotMatch(source,/await getSession|renderNavigation\(\);|window\.PAYPOINT_CONFIG|location\.hash/);
 });
 
-test('proxy uses the browser Host when Next internally normalizes its request URL',async()=>{
+test('proxy validates the browser origin before routing to the API host',async()=>{
   let forwarded;
   const request=new Request('http://localhost:3001/paypoint/api/v1/session/login/',{method:'POST',headers:{host:'127.0.0.1:3001',origin:'http://127.0.0.1:3001'},body:'{}'});
   await proxyApi(request,['session','login'],{origin:'http://backend:8000',fetcher:async(url,options)=>{forwarded=options.headers;return new Response('{}');}});
-  assert.equal(forwarded.get('host'),'127.0.0.1:3001');assert.equal(forwarded.get('origin'),'http://127.0.0.1:3001');
+  assert.equal(forwarded.get('host'),'backend:8000');assert.equal(forwarded.get('origin'),'http://backend:8000');
 });
 
-test('real HTTP transport preserves browser host, CSRF and individual cookies',async()=>{
+test('real HTTP transport routes the API host and preserves CSRF and individual cookies',async()=>{
   const {createServer}=await import('node:http');
   let incoming;
   const server=createServer((request,response)=>{incoming=request.headers;response.setHeader('Set-Cookie',['sessionid=synthetic; HttpOnly','csrftoken=synthetic; SameSite=Lax']);response.setHeader('Content-Type','application/json');response.end('{}');});
@@ -64,7 +64,7 @@ test('real HTTP transport preserves browser host, CSRF and individual cookies',a
     const request=new Request('http://localhost:3001/paypoint/api/v1/session/login/',{method:'POST',headers:{host:'127.0.0.1:3001',origin:'http://127.0.0.1:3001','x-csrftoken':'synthetic'},body:'{}'});
     const response=await proxyApi(request,['session','login'],{origin:`http://127.0.0.1:${server.address().port}`});
     await response.text();
-    assert.equal(incoming.host,'127.0.0.1:3001');assert.equal(incoming.origin,'http://127.0.0.1:3001');assert.equal(incoming['x-csrftoken'],'synthetic');assert.equal(incoming['content-length'],'2');assert.equal(incoming['transfer-encoding'],undefined);assert.equal(response.headers.getSetCookie().length,2);
+    assert.equal(incoming.host,`127.0.0.1:${server.address().port}`);assert.equal(incoming.origin,`http://127.0.0.1:${server.address().port}`);assert.equal(incoming['x-csrftoken'],'synthetic');assert.equal(incoming['content-length'],'2');assert.equal(incoming['transfer-encoding'],undefined);assert.equal(response.headers.getSetCookie().length,2);
   } finally {await new Promise(resolve=>server.close(resolve));}
 });
 
@@ -86,4 +86,16 @@ test('self-hosted and Vercel builds use the appropriate output adapters',async()
     const result=spawnSync(process.execPath,['--input-type=module','-e',"import config from './next.config.mjs';console.log(JSON.stringify(config.output??null));"],{cwd:new URL('../',import.meta.url),encoding:'utf8',env:{...process.env,VERCEL:flag}});
     assert.equal(result.status,0,result.stderr);assert.equal(JSON.parse(result.stdout),expected);
   }
+});
+
+ test('proxy rejects cross-site writes before contacting the API',async()=>{
+ for(const origin of ['https://evil.invalid',null]){
+ const headers={host:'staff.invalid'};if(origin)headers.origin=origin;
+ const response=await proxyApi(new Request('https://staff.invalid/paypoint/api/v1/session/login/',{method:'POST',headers,body:'{}'}),['session','login'],{origin:'https://api.imsuth.site',fetcher:()=>{throw Error('Must not contact API');}});
+ assert.equal(response.status,403);
+ }
+});
+ test('Vercel uses the approved production API origin',async()=>{
+ const config=JSON.parse(await readFile(new URL('../vercel.json',import.meta.url),'utf8'));
+ assert.equal(config.env.DJANGO_API_ORIGIN,'https://api.imsuth.site');
 });
