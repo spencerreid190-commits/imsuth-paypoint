@@ -1,0 +1,7 @@
+/* Next.js owns the application shell; existing screen classes preserve its visual design. */
+.next-state {min-height:100vh;display:grid;align-content:center;justify-content:center;gap:1rem;padding:2rem;background:#f4faff;color:#06334a;}
+.next-screen-host {min-width:0;}
+.next-recovery {max-width:660px;}
+.next-recovery form {display:grid;gap:1rem;}
+.login-options a {color:var(--primary,#005bff);font-size:14px;}
+.static-login .login-tools>span {color:#052f43;font-weight:600;}
