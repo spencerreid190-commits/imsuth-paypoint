@@ -233,71 +233,288 @@ async function helpSupport() {
   return livePages.help();
 }
 async function overviewDashboardPreview() {
-  const [payments, departments, invoices, receipts] = [[], [], [], []];
-  const invoiceMap = new Map(invoices.map(i => [String(i.id), i])),
-    receiptMap = new Map(receipts.map(i => [String(i.payment), i]));
-  let period = 30,
-    page = 1,
-    rows = [];
-  const colours = ['#1687ff', '#00a995', '#ff922c', '#f53883', '#a55bff'],
-    methods = {
-      pos: 'POS',
-      bank_transfer: 'Bank Transfer',
-      online: 'Online Payment',
-      cash: 'Cash',
-      ussd: 'USSD',
-      POS: 'POS',
-      'Bank Transfer': 'Bank Transfer',
-      Cash: 'Cash'
-    },
-    confirmed = i => ['confirmed', 'verified'].includes(i.status),
-    failed = i => ['failed', 'expired', 'rejected'].includes(i.status),
-    today = new Date().toLocaleDateString('en-CA', {
-      timeZone: 'Africa/Lagos'
-    }),
-    department = i => i.department || departments.find(d => String(d.id) === String(i.department_id || invoiceMap.get(String(i.invoice))?.department))?.name || 'Not supplied',
-    channel = i => methods[i.channel] || i.channel || 'Not supplied';
-  content.innerHTML = `<div class="overview-preview-page"><header class="overview-preview-brand"><img src="/paypoint/images/hospital%20logo.png" alt="IMSUTH crest"><div><h1>IMSUTH Revenue Control</h1><p>Imo State Teaching Hospital, Orlu: all payments in one place</p></div><label>Period <select data-overview-period><option value="30">Last 30 days</option><option value="7">Last 7 days</option><option value="1">Today</option><option value="all">All records</option></select></label></header><nav class="overview-preview-tabs" aria-label="Overview shortcuts"><a href="#dashboard-overview-preview" aria-current="page">Overview</a><a href="#dashboard-record-payment">Record payment</a><a href="#patients">Department desk</a><a href="#admin-departments">Departments</a><a href="#admin-services">Services and prices</a><a href="#cash-points">Cash points and orders</a><a href="#alerts">Alerts <b data-overview-alert-count></b></a><a href="#users-audit">Users and audit</a></nav><p class="overview-preview-note">Overview Dashboard · ${'Recorded NGN payments'} · Period filters use payment confirmation or creation dates.</p><section class="finance-overview-kpis overview-preview-kpis" data-overview-kpis></section><div class="overview-coverage-grid"><section class="finance-card"><h2>Daily collections by channel</h2><div data-overview-daily role="img" aria-label="Daily confirmed collections by payment channel"></div></section><section class="finance-card"><h2>Channel split</h2><div class="finance-department-chart" data-overview-channels></div></section><section class="finance-card"><h2>Top departments</h2><div data-overview-departments></div></section><section class="finance-card"><h2>Reconciliation with bank and POS settlement</h2><div data-overview-reconciliation></div><a href="#reports-reconciliation">View reconciliation report</a></section></div><div class="overview-preview-bottom"><section class="finance-card"><div class="finance-card-heading"><h2>Recent Transactions</h2><a href="#payments">View All</a></div><div data-overview-table></div><div class="pending-pagination"><span data-overview-count aria-live="polite"></span><div data-overview-pages></div></div></section><aside><section class="finance-card"><h2>Payment status</h2><div class="finance-department-chart" data-overview-status></div></section><section class="finance-card"><div class="finance-card-heading"><h2>Alerts &amp; Exceptions</h2><a href="#alerts">View All</a></div><div data-overview-alerts></div></section><section class="finance-card"><h2>Quick Actions</h2><div class="overview-preview-actions"><a href="#dashboard-record-payment">Record Payment</a><a href="#payments-receipt-verification">Verify Receipt</a><a href="#billing-create">Create Invoice</a><a href="#reports">View Reports</a></div></section></aside></div><dialog class="pending-detail-dialog overview-preview-dialog"><div data-overview-detail></div><form method="dialog"><button class="pending-outline">Close</button></form></dialog></div>`;
-  const root = content.querySelector('.overview-preview-page');
-  const table = () => {
-    const pages = Math.max(1, Math.ceil(rows.length / 10));
-    page = Math.min(page, pages);
-    content.querySelector('[data-overview-table]').innerHTML = `<div class="table-wrap"><table class="data-table finance-data-table overview-preview-table"><thead><tr>${['#', 'Date & Time', 'Patient Name', 'Department', 'Service', 'Channel', 'Amount (₦)', 'Status', 'Receipt No.', 'Actions'].map(t => `<th>${t}</th>`).join('')}</tr></thead><tbody>${rows.slice((page - 1) * 10, page * 10).map((i, k) => {
-      const invoice = invoiceMap.get(String(i.invoice)),
-        receipt = receiptMap.get(String(i.id));
-      return `<tr><td>${(page - 1) * 10 + k + 1}</td><td>${escapeHtml(new Date(i.confirmed_at || i.created_at).toLocaleString('en-GB', {
-        timeZone: 'Africa/Lagos',
-        dateStyle: 'medium',
-        timeStyle: 'short'
-      }))}</td><td>${escapeHtml(i.patient_name || i.patient || 'Not supplied')}</td><td>${escapeHtml(department(i))}</td><td>${escapeHtml((invoice?.line_items || []).map(l => l.description).join(', ') || 'Not supplied')}</td><td>${escapeHtml(channel(i))}</td><td>${Number(i.amount).toLocaleString('en-NG')}</td><td><span class="overview-payment-badge ${confirmed(i) ? 'verified' : failed(i) ? 'failed' : 'pending'}">${confirmed(i) ? 'Verified' : failed(i) ? 'Failed' : 'Pending'}</span></td><td>${escapeHtml(receipt?.receipt_number || '—')}</td><td><button type="button" class="pending-outline" data-overview-view="${(page - 1) * 10 + k}">View</button></td></tr>`;
-    }).join('') || '<tr><td colspan="10" class="finance-empty">No transactions in this period.</td></tr>'}</tbody></table></div>`;
-    content.querySelector('[data-overview-count]').textContent = `Showing ${rows.length ? (page - 1) * 10 + 1 : 0} to ${Math.min(page * 10, rows.length)} of ${rows.length.toLocaleString()} transactions`;
-    content.querySelector('[data-overview-pages]').innerHTML = `<button type="button" data-overview-page="${page - 1}" aria-label="Previous page" ${page === 1 ? 'disabled' : ''}>‹</button>${Array.from({
-      length: pages
-    }, (_, k) => k).filter(k => k === 0 || k === pages - 1 || Math.abs(k + 1 - page) <= 1).map(k => `<button type="button" data-overview-page="${k + 1}" ${page === k + 1 ? 'aria-current="page"' : ''}>${k + 1}</button>`).join('')}<button type="button" data-overview-page="${page + 1}" aria-label="Next page" ${page === pages ? 'disabled' : ''}>›</button>`;
-  };
-  content.querySelector('[data-overview-period]').addEventListener('change', event => {
-    return;
-  });
-  root.addEventListener('click', event => {
-    const pager = event.target.closest('[data-overview-page]');
-    if (pager && !pager.disabled) {
-      page = Number(pager.dataset.overviewPage);
-      table();
-    }
-    const view = event.target.closest('[data-overview-view]');
-    if (view) {
-      const i = rows[Number(view.dataset.overviewView)];
-      content.querySelector('[data-overview-detail]').innerHTML = `<h2>Transaction Details</h2><p>${escapeHtml(i.reference)}</p><p>Patient: ${escapeHtml(i.patient_name || i.patient || 'Not supplied')}</p><p>Department: ${escapeHtml(department(i))}</p><p>${moneyWhole(i.amount)} · ${escapeHtml(channel(i))} · ${escapeHtml(i.status)}</p>`;
-      content.querySelector('dialog').showModal();
-    }
-  });
-  {
-    await refreshOverview(root, escapeHtml, moneyWhole);
-    await mountOverviewTransactions(root, escapeHtml, moneyWhole);
-  }
+  content.innerHTML=`<div class="overview-preview-page imported-overview"><header class="source-overview-header"><div><h1>IMSUTH Revenue Control</h1><small>Imo State Teaching Hospital, Orlu: all payments in one place</small></div><label>Period <select data-overview-period><option value="1">Today</option><option value="7">Last 7 days</option><option value="30" selected>Last 30 days</option><option value="all">All records</option></select></label></header><nav class="source-overview-nav" aria-label="Revenue control sections"><a href="#dashboard-overview-preview" aria-current="page">Overview</a><a href="#dashboard-record-payment">Record payment</a><a href="#patients">Department desk</a><a href="#admin-departments">Departments</a><a href="#admin-services">Services and prices</a><a href="#cash-points">Cash points and orders</a><a href="#alerts">Alerts <b data-overview-alert-count></b></a><a href="#users-audit">Users and audit</a></nav><div class="source-overview-body"><section class="source-overview-kpis" data-overview-kpis aria-label="Collection summary"><p>Loading collection summary…</p></section><div class="source-overview-grid"><section class="source-overview-card"><h2>Daily collections by channel</h2><div data-overview-daily aria-label="Daily confirmed NGN collections"></div></section><section class="source-overview-card"><h2>Channel split</h2><div data-overview-channels></div></section><section class="source-overview-card"><h2>Top departments</h2><div data-overview-departments></div></section><section class="source-overview-card"><h2>Reconciliation with bank and POS settlement</h2><div data-overview-reconciliation></div><a class="source-overview-report" href="#reports-reconciliation">View reconciliation report</a></section></div><p class="overview-preview-note">Confirmed NGN collections for the selected period. Pending attempts are excluded. Reconciliation counts imported statement rows.</p></div></div>`;
+  await refreshOverview(content.querySelector('.imported-overview'),escapeHtml,moneyWhole);
 }
+// During rolling upgrades, retain the existing operational screens until the
+// new backend capture endpoint and its migration are deployed. Never fall back
+// on authorization, network, or server failures.
 async function recordPaymentPreview() {
+  let capture;
+  try {capture=await api('record-payment/');}
+  catch(error){if(error.status!==404)throw error;await legacyRecordPaymentPreview();return;}
+  await enhancedRecordPaymentPreview(capture);
+}
+async function departmentDesk() {
+  try {await api('record-payment/');}
+  catch(error){if(error.status!==404)throw error;await legacyDepartmentDesk();return;}
+  await enhancedDepartmentDesk();
+}
+
+async function enhancedRecordPaymentPreview(capture) {
+  const fetchAll = async name => {
+    let data = await api(`${name}/?page_size=100`),
+      items = [...list(data)];
+    for (let page = 2; data.next; page++) {
+      data = await api(`${name}/?page_size=100&page=${page}`);
+      items.push(...list(data));
+    }
+    return items;
+  };
+  const [patients, departments, services, tariffs, payments] = await Promise.all([Promise.resolve([]), ...['departments', 'services', 'tariffs'].map(fetchAll), Promise.resolve([])]);
+  let patient = null,
+    service = null,
+    unit = null,
+    drafts = [],
+    receipt = null;
+  const fullName = i => i.full_name || [i.first_name, i.middle_name, i.last_name].filter(Boolean).join(' '),
+    options = (items, label) => `<option value="">${label}</option>${items.map(i => `<option value="${escapeHtml(i.id)}">${escapeHtml(i.name)}</option>`).join('')}`,
+    field = (label, name, type = 'text', attrs = '') => `<label>${label}<input type="${type}" name="${name}" ${attrs}></label>`,
+    now = new Date(),
+    localDate = new Date(now.getTime() - now.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+  content.innerHTML = `<div class="record-payment-preview"><header class="overview-preview-brand"><img src="/paypoint/images/hospital%20logo.png" alt="IMSUTH crest"><div><h1>IMSUTH Revenue Control</h1><p>Imo State Teaching Hospital, Orlu: all payments in one place</p></div><span class="record-preview-label">Record Payment</span></header><nav class="overview-preview-tabs" aria-label="Revenue control shortcuts"><a href="#dashboard-overview-preview">Overview</a><a href="#dashboard-record-payment" aria-current="page">Record payment</a><a href="#patients">Department desk</a><a href="#admin-departments">Departments</a><a href="#admin-services">Services and prices</a><a href="#cash-points">Cash points and orders</a><a href="#alerts">Alerts</a><a href="#users-audit">Users and audit</a></nav><p class="overview-preview-note">${'Payment attempts are recorded on the server. Submitted references are not confirmation; paid receipts require authoritative verification.'}</p><div class="record-preview-layout"><div class="record-preview-main"><form class="finance-card record-preview-form" data-rp-form><div class="finance-card-heading"><div><h2>Record a payment and issue a receipt</h2><p>Select the collection point, patient and service. A paid receipt becomes available after verification.</p></div><button type="reset" class="pending-outline">Clear Form</button></div><fieldset><legend>Collection point</legend><label>Cash point *<select name="cash_point" required>${options(capture.cash_points, 'Select cash point')}</select></label></fieldset><fieldset><legend>1. Patient Information</legend><div class="record-fields"><label>Patient ID / Hospital No.<span class="record-search"><input name="patient_query" placeholder="Enter patient ID, name or phone"><button type="button" class="pending-outline" data-rp-search aria-label="Find patient">Search</button></span></label>${field('Patient Name', 'patient_name', 'text', 'readonly placeholder="Filled from selected patient"')}${field('Phone Number', 'phone', 'tel', 'readonly')}${field('Date of Birth', 'dob', 'date', 'readonly')}<label>Gender<input name="gender" readonly></label>${field('Address', 'address', 'text', 'readonly')}${field('Emergency Contact / Next of Kin', 'next_of_kin', 'text', 'readonly')}${field('Next of Kin Phone', 'kin_phone', 'tel', 'readonly placeholder="Not supplied"')}</div><div class="record-patient-results" data-rp-results aria-live="polite"></div></fieldset><fieldset><legend>2. Service and Department</legend><div class="record-fields"><label>Department *<select name="department" required>${options(departments.filter(i => i.is_active !== false), 'Select department')}</select></label><label>Service *<select name="service" required disabled><option value="">Select department first</option></select></label><label>Patient Category<select name="category"><option value="self_pay">Self Pay</option><option value="insurance" disabled>Insurance — tariff not configured</option><option value="exempt" disabled>Exempt — approval required</option></select></label>${field('Quantity *', 'quantity', 'number', 'min="1" max="100" step="1" value="1" required')}</div><div class="record-service-strip"><div><b>Service Details</b><span data-rp-service-line>No service selected</span></div><div><span>Amount to Pay (₦)</span><strong data-rp-total>₦0</strong></div></div></fieldset><fieldset><legend>3. Payment Details</legend><div class="record-fields"><label>Payment Channel *<select name="channel"><option value="pos">POS (Card)</option><option value="bank_transfer">Bank Transfer</option><option value="online">Online Payment</option><option value="cash">Cash</option></select></label>${field('Reference No. / Transaction ID *', 'reference', 'text', 'required maxlength="120" placeholder="Enter reference number"')}${field('Amount to pay (₦) *', 'paid', 'number', 'required min="0.01" step="0.01" placeholder="Filled from approved tariff"')}<label>Reason for price change<textarea name="override_reason" maxlength="500" placeholder="Required when the amount differs from the price list"></textarea></label><label>Cash standing order (cash only)<select name="cash_order" disabled><option value="">None</option></select></label>${field('Payment Date & Time *', 'occurred', 'datetime-local', `value="${localDate}" required`)}<label class="record-wide">Remarks (optional)<textarea name="remarks" maxlength="500" placeholder="Enter any additional notes..."></textarea></label></div></fieldset><p class="record-form-message" data-rp-message role="status"></p><div class="record-submit"><a class="pending-outline" href="#dashboard-overview-preview">Cancel</a><button type="submit" class="pending-verify" ${capture.can_record?'':'disabled'}>${'Record Payment & Await Receipt'}</button></div></form><section class="finance-card"><div class="finance-card-heading"><h2>Latest receipts</h2><span>Official receipts only</span><a href="#payments">View All</a></div><div data-rp-recent></div></section></div><aside class="record-preview-aside"><section class="finance-card"><h2>Patient Summary</h2><div data-rp-patient><p class="finance-empty">Find and select a patient to view their details.</p></div></section><section class="finance-card"><h2>Selected Service</h2><div data-rp-service><p class="finance-empty">Choose a department and service to see details here.</p></div></section><section class="finance-card"><h2>Fee Breakdown</h2><div data-rp-fees></div></section><section class="finance-card" data-rp-receipt-card><h2>Receipt preview</h2><div data-rp-receipt>The receipt appears here after verification.</div></section></aside></div></div>`;
+  const root = content.querySelector('.record-payment-preview'),
+    form = content.querySelector('[data-rp-form]'),
+    el = name => form.elements.namedItem(name),
+    details = entries => `<dl class="record-detail-list">${entries.map(([label, value]) => `<div><dt>${label}</dt><dd>${escapeHtml(value || 'Not supplied')}</dd></div>`).join('')}</dl>`,
+    total = () => unit === null ? 0 : Math.round(unit * Number(el('quantity').value || 0) * 100) / 100;
+  const fees = () => {
+    const amount = total();
+    content.querySelector('[data-rp-total]').textContent = moneyWhole(Number(el('paid').value||amount));
+    content.querySelector('[data-rp-fees]').innerHTML = details([['Service Amount', unit === null ? 'Not supplied' : moneyWhole(unit)], ['Quantity', el('quantity').value], ['Subtotal', moneyWhole(amount)], ['Entered Amount',moneyWhole(Number(el('paid').value||amount))], ['Price Difference',moneyWhole(Number(el('paid').value||amount)-amount)]]);
+  };
+  let latestReceipts=capture.receipts;
+  const recent = () => {
+    content.querySelector('[data-rp-recent]').innerHTML = `<div class="table-wrap"><table class="data-table finance-data-table record-recent-table"><thead><tr><th>Receipt</th><th>Patient</th><th>Service</th><th>Department</th><th>Amount paid</th><th>Service status</th><th>Actions</th></tr></thead><tbody>${latestReceipts.map(i=>`<tr><td>${escapeHtml(i.receipt_number)}</td><td>${escapeHtml(i.patient_name)}</td><td>${escapeHtml(i.service)}</td><td>${escapeHtml(i.department)}</td><td>${moneyWhole(i.amount)}</td><td>${escapeHtml(i.payment_status==='confirmed'?i.service_status:i.payment_status)}</td><td>${i.payment_status==='confirmed'?`<a class="pending-outline" target="_blank" rel="noopener" href="/paypoint/api/v1/receipts/${encodeURIComponent(i.id)}/print/">Print receipt</a>`:'Receipt unavailable'}</td></tr>`).join('')||'<tr><td colspan="7">No official receipts issued yet.</td></tr>'}</tbody></table></div>`;
+  };
+
+  const clearReceipt = () => {
+    receipt = null;
+    content.querySelector('[data-rp-receipt-card]').hidden = false;
+    content.querySelector('[data-rp-receipt]').textContent='The receipt appears here after verification.';
+  };
+  const pickPatient = index => {
+    patient = patients[index];
+    el('patient_name').value = fullName(patient);
+    el('phone').value = patient.phone || '';
+    el('dob').value = patient.date_of_birth || '';
+    el('gender').value = patient.sex || '';
+    el('address').value = patient.address || '';
+    el('next_of_kin').value = patient.emergency_contact || '';
+    el('kin_phone').value = patient.next_of_kin_phone || '';
+    el('patient_query').value = patient.patient_id;
+    content.querySelector('[data-rp-results]').innerHTML = '';
+    content.querySelector('[data-rp-patient]').innerHTML = details([['Patient ID', patient.patient_id], ['Full Name', fullName(patient)], ['Gender', patient.sex], ['Date of Birth', patient.date_of_birth], ['Phone Number', patient.phone], ['Address', patient.address], ['Emergency Contact', patient.emergency_contact], ['Next of Kin Phone', patient.next_of_kin_phone]]);
+    clearReceipt();
+  };
+  const chooseService = () => {
+    service = services.find(i => String(i.id) === el('service').value) || null;
+    const time = Date.now(),
+      matches = tariffs.filter(t => service && String(t.service) === String(service.id) && t.is_approved && t.currency === 'NGN' && Date.parse(t.effective_from) <= time && (!t.effective_until || Date.parse(t.effective_until) > time)).sort((a, b) => Date.parse(b.effective_from) - Date.parse(a.effective_from));
+    unit = matches.length ? Number(matches[0].amount) : null;
+    content.querySelector('[data-rp-service]').innerHTML = service ? details([['Service Name', service.name], ['Service Code', service.code], ['Unit Price', unit === null ? 'No single approved current NGN tariff' : moneyWhole(unit)], ['Patient Category', 'Self Pay']]) : '<p class="finance-empty">No service selected.</p>';
+    content.querySelector('[data-rp-service-line]').textContent = service ? `${service.name} · ${unit === null ? 'Approved pricing unavailable' : moneyWhole(unit) + ' per unit'} · Self Pay · No discount` : 'No service selected';
+    el('paid').value=unit===null?'':total().toFixed(2);
+    el('override_reason').value='';
+    el('override_reason').required=false;
+    fees();
+    clearReceipt();
+  };
+  let patientSearchSequence=0;
+  root.addEventListener('click', async event => {
+    if (event.target.closest('[data-rp-search]')) {
+      const query=el('patient_query').value.trim(),sequence=++patientSearchSequence;
+      if(!query){content.querySelector('[data-rp-results]').textContent='Enter a patient ID, name or phone number.';return;}
+      content.querySelector('[data-rp-results]').textContent='Searching permitted patients…';
+      try {
+        const result=await api('patients/?page_size=20&search='+encodeURIComponent(query));
+        if(sequence!==patientSearchSequence||!root.isConnected)return;
+        patients.splice(0,patients.length,...list(result));
+        content.querySelector('[data-rp-results]').innerHTML=patients.map((p,k)=>`<button type="button" class="pending-outline" data-rp-patient-index="${k}">${escapeHtml(p.patient_id)} · ${escapeHtml(fullName(p))}</button>`).join('')||'No matching patients found.';
+      }catch(error){if(root.isConnected)content.querySelector('[data-rp-results]').textContent=error.message;}
+    }
+    const pick = event.target.closest('[data-rp-patient-index]');
+    if (pick) pickPatient(Number(pick.dataset.rpPatientIndex));
+  });
+  form.addEventListener('input', () => {
+    delete form.dataset.requestKey;
+    delete form.dataset.lastPayment;
+    clearReceipt();
+  });
+  el('department').addEventListener('change', () => {
+    el('service').innerHTML = options(services.filter(i => String(i.department) === el('department').value && i.is_active !== false), 'Select service');
+    el('service').disabled = !el('department').value;
+    el('service').value = '';
+    chooseService();
+  });
+  el('service').addEventListener('change', chooseService);
+  el('quantity').addEventListener('input', () => {
+    el('paid').value=unit===null?'':total().toFixed(2);
+    el('override_reason').required=false;
+    fees();
+    clearReceipt();
+  });
+  el('patient_query').addEventListener('input', () => {
+    if (patient && el('patient_query').value !== patient.patient_id) {
+      patient = null;
+      ['patient_name', 'phone', 'dob', 'gender', 'address', 'next_of_kin', 'kin_phone'].forEach(k => el(k).value = '');
+      content.querySelector('[data-rp-patient]').innerHTML = '<p class="finance-empty">Find and select a patient.</p>';
+      clearReceipt();
+    }
+  });
+  const updateOrders=()=>{
+    const enabled=el('channel').value==='cash'&&!!el('cash_point').value;
+    el('cash_order').disabled=!enabled;
+    el('cash_order').innerHTML='<option value="">None</option>'+(enabled?capture.cash_orders.filter(o=>String(o.cash_point)===el('cash_point').value).map(o=>`<option value="${escapeHtml(o.id)}">${escapeHtml(o.purpose)} · ${moneyWhole(o.amount)}</option>`).join(''):'');
+  };
+  el('cash_point').addEventListener('change',updateOrders);el('channel').addEventListener('change',updateOrders);
+  el('paid').addEventListener('input',()=>{fees();el('override_reason').required=Math.round(Number(el('paid').value)*100)!==Math.round(total()*100);clearReceipt();});
+  form.addEventListener('submit', async event => {
+    event.preventDefault();
+    const message = content.querySelector('[data-rp-message]'),
+      amount = total(),
+      quantity = Number(el('quantity').value),
+      paid = Number(el('paid').value),
+      reference = el('reference').value.trim();
+    if (!patient || !service || unit === null || !Number.isInteger(quantity) || quantity < 1 || quantity > 100 || !reference || !el('cash_point').value || !Number.isFinite(paid) || paid<=0 || (Math.round(paid * 100) !== Math.round(amount * 100) && el('override_reason').value.trim().length<5)) {
+      message.textContent = 'Select a cash point, patient and approved service, enter a reference and positive amount, and provide a reason of at least five characters for any price change.';
+      return;
+    }
+    if (!el('occurred').value || !Number.isFinite(Date.parse(el('occurred').value)) || Date.parse(el('occurred').value) > Date.now() + 60000) {
+      message.textContent = 'Enter a valid payment date and time that is not in the future.';
+      return;
+    }
+    {
+      const button = form.querySelector('[type=submit]');
+      if (button) button.disabled = true;
+      try {
+        const key = form.dataset.requestKey || (form.dataset.requestKey = crypto.randomUUID());
+        const recorded=await api('record-payment/',{method:'POST',body:JSON.stringify({
+          patient:patient.id,department:el('department').value,service:service.id,quantity,
+          cash_point:el('cash_point').value,cash_order:el('cash_order').value||null,
+          amount:paid.toFixed(2),override_reason:el('override_reason').value.trim(),channel:el('channel').value,
+          submitted_reference:reference,reported_paid_at:new Date(el('occurred').value).toISOString(),
+          remarks:el('remarks').value.trim(),idempotency_key:key
+        })});
+        const {invoice,payment}=recorded;
+        content.querySelector('[data-rp-receipt]').innerHTML=details([['Invoice',invoice.invoice_number],['Patient',fullName(patient)],['Department',departments.find(d=>String(d.id)===el('department').value)?.name],['Service',service.name],['Amount',moneyWhole(payment.amount)],['Payment status',payment.status]])+'<p>Payment recorded. An official receipt has not been issued; verification is pending.</p>';
+        message.textContent = `Payment attempt ${payment.reference} recorded. Status: ${payment.status}. Amount due: ${moneyWhole(invoice.outstanding_balance)}. Reference submission does not verify payment; no paid receipt has been issued.`;
+        payments.unshift(payment);
+        if(recorded.price_changed)message.textContent+=' The price change has been flagged for review.';
+        form.dataset.lastPayment = String(payment.id);
+        recent();
+        let statusControls = root.querySelector('[data-rp-status-controls]');
+        if (!statusControls) {
+          statusControls = document.createElement('div');
+          statusControls.dataset.rpStatusControls = '';
+          message.after(statusControls);
+        }
+        watchPaymentStatus(payment.id, () => root.isConnected && form.dataset.lastPayment === String(payment.id), async result => {
+          if (result.error) {
+            message.textContent = `Status check unavailable: ${result.error}. Refresh Transactions to check this payment.`;
+            return;
+          }
+          payment.status = result.status;
+          recent();
+          message.textContent = `Payment ${payment.reference}: ${result.status}. Reference submission is not verification.`;
+          if (result.status === 'confirmed') {
+            const response = await api(`receipts/?payment=${encodeURIComponent(payment.id)}`),
+              official = list(response)[0];
+            if (official) {
+              content.querySelector('[data-rp-receipt-card]').hidden = false;
+              content.querySelector('[data-rp-receipt]').innerHTML = details([['Receipt',official.receipt_number],['Patient',payment.patient_name],['Department',payment.department],['Service',payment.service_summary],['Amount',moneyWhole(official.amount)],['Issued',official.issued_at]])+`<p>Payment verified</p><a class="pending-outline" target="_blank" rel="noopener" href="${escapeHtml('/paypoint/api/v1/')}receipts/${encodeURIComponent(official.id)}/print/">Open official receipt</a>`;
+              latestReceipts=(await api('record-payment/')).receipts;recent();
+              message.textContent = 'The backend has confirmed payment and issued an official receipt.';
+            }
+          }
+        }, statusControls);
+      } catch (error) {
+        message.textContent = error.message;
+      } finally {
+        if (button) button.disabled = false;
+      }
+      return;
+    }
+  });
+  form.addEventListener('input',()=>{delete form.dataset.requestKey;});
+  form.addEventListener('change',()=>{delete form.dataset.requestKey;});
+  form.addEventListener('reset', () => {
+    patient = service = null;
+    unit = null;
+    delete form.dataset.requestKey;
+    clearReceipt();
+    content.querySelector('[data-rp-results]').innerHTML = '';
+    content.querySelector('[data-rp-message]').textContent = '';
+    content.querySelector('[data-rp-patient]').innerHTML = '<p class="finance-empty">Find and select a patient to view their details.</p>';
+    content.querySelector('[data-rp-service]').innerHTML = '<p class="finance-empty">No service selected.</p>';
+    content.querySelector('[data-rp-service-line]').textContent = 'No service selected';
+    setTimeout(() => {
+      el('service').innerHTML = '<option value="">Select department first</option>';
+      el('service').disabled = true;
+      updateOrders();
+      fees();
+    }, 0);
+  });
+  fees();
+  recent();
+}
+async function enhancedDepartmentDesk() {
+  const departments=[];let url='departments/?page_size=100';
+  for(let page=1;url;page++){const data=await api('departments/?page_size=100&page='+page);departments.push(...list(data).filter(d=>d.is_active!==false));url=data.next;}
+  content.innerHTML=`<div class="department-desk-page"><header class="overview-preview-brand"><img src="/paypoint/images/hospital%20logo.png" alt="IMSUTH crest"><div><h1>IMSUTH Revenue Control</h1><p>Imo State Teaching Hospital, Orlu: all payments in one place</p></div><label>Period<select data-desk-period><option value="30">Last 30 days</option><option value="7">Last 7 days</option><option value="today">Today</option><option value="all">All records</option></select></label></header><nav class="overview-preview-tabs" aria-label="Revenue control shortcuts"><a href="#dashboard-overview-preview">Overview</a><a href="#dashboard-record-payment">Record payment</a><a href="#patients" aria-current="page">Department desk</a><a href="#admin-departments">Departments</a><a href="#admin-services">Services and prices</a><a href="#cash-points">Cash points and orders</a><a href="#alerts">Alerts</a><a href="#users-audit">Users and audit</a></nav><div class="desk-check-layout"><section class="finance-card"><h2>Department desk: check a receipt before giving a service</h2><form data-desk-search><label>Department you are at<select name="department" required>${departments.map(d=>`<option value="${escapeHtml(d.id)}">${escapeHtml(d.name)}</option>`).join('')}</select></label><label>Receipt number<input name="receipt" required maxlength="120" placeholder="Enter official receipt number"></label><button class="pending-verify" type="submit" ${departments.length?'':'disabled'}>Check receipt</button><p>Only receipts for the selected department can be checked here. A receipt can be printed again, but each service can only be marked delivered once.</p></form><p data-desk-message role="status"></p></section><section class="finance-card" data-desk-result aria-live="polite"><h2>Receipt check</h2><p>Check a receipt to see patient, payment and service details.</p></section></div><section class="finance-card"><h2 data-desk-title>Department receipts</h2><div data-desk-list></div><div class="pending-pagination"><span data-desk-count></span><div><button class="pending-outline" data-desk-prev>Previous</button><span data-desk-page></span><button class="pending-outline" data-desk-next>Next</button></div></div></section></div>`;
+  const root=content.querySelector('.department-desk-page'),form=root.querySelector('[data-desk-search]'),department=form.elements.department,period=root.querySelector('[data-desk-period]'),result=root.querySelector('[data-desk-result]'),message=text=>root.querySelector('[data-desk-message]').textContent=text;
+  let page=1,listVersion=0,checkVersion=0,selected=null,hasNext=false,hasPrevious=false;
+  const query=()=>'?department='+encodeURIComponent(department.value);
+  const details=entries=>`<dl class="record-detail-list">${entries.map(([key,value])=>`<div><dt>${escapeHtml(key)}</dt><dd>${escapeHtml(value)}</dd></div>`).join('')}</dl>`;
+  const load=async()=>{
+    const version=++listVersion;
+    if(!department.value){message('No active departments are available to this account.');return;}
+    root.querySelector('[data-desk-title]').textContent='Receipts for '+(departments.find(d=>String(d.id)===department.value)?.name||'selected department');
+    root.querySelector('[data-desk-list]').textContent='Loading department receipts…';
+    try{
+      const data=await api('department-desk/receipts/'+query()+'&period='+encodeURIComponent(period.value)+'&page_size=10&page='+page);
+      if(version!==listVersion||!root.isConnected)return;
+      root.querySelector('[data-desk-list]').innerHTML=`<div class="table-wrap"><table class="data-table finance-data-table"><thead><tr><th>Receipt</th><th>Patient</th><th>Service</th><th>Department</th><th>Amount paid</th><th>Status</th><th>Actions</th></tr></thead><tbody>${data.results.map(r=>`<tr><td>${escapeHtml(r.receipt_number)}</td><td>${escapeHtml(r.patient_name)}</td><td>${escapeHtml(r.items.map(i=>i.service).join(', '))}</td><td>${escapeHtml(r.department_name)}</td><td>${moneyWhole(r.amount)}</td><td>${escapeHtml(r.eligible_for_delivery?r.service_status:'Payment unavailable for delivery')}</td><td><button type="button" class="pending-outline" data-desk-reference="${escapeHtml(r.receipt_number)}">Check receipt</button>${r.payment_status==='confirmed'?` <a class="pending-outline" href="/paypoint/api/v1/receipts/${encodeURIComponent(r.id)}/print/" target="_blank" rel="noopener">Print receipt</a>`:''}</td></tr>`).join('')||'<tr><td colspan="7">No official receipts for this department and period.</td></tr>'}</tbody></table></div>`;
+      hasNext=!!data.next;hasPrevious=!!data.previous;
+      root.querySelector('[data-desk-count]').textContent=`Showing ${data.count?(page-1)*10+1:0}–${Math.min(page*10,data.count)} of ${data.count} receipts`;
+      root.querySelector('[data-desk-page]').textContent=String(page);
+      root.querySelector('[data-desk-prev]').disabled=!hasPrevious;root.querySelector('[data-desk-next]').disabled=!hasNext;
+    }catch(error){if(version===listVersion&&root.isConnected)root.querySelector('[data-desk-list]').textContent=error.message;}
+  };
+  const renderChecked=()=>{
+    const r=selected;if(!r)return;
+    result.innerHTML=`<h2>${escapeHtml(r.receipt_number)}</h2><div class="desk-verification-banner ${r.eligible_for_delivery?'verified':''}"><b>${r.eligible_for_delivery?'Payment verified':'Not eligible for service delivery'}</b><p>${escapeHtml(r.service_status)}</p></div>${details([['Patient',r.patient_name],['Patient ID',r.patient_id],['Department',r.department_name],['Amount paid',moneyWhole(r.amount)],['Payment channel',r.channel],['Payment status',r.payment_status]])}<fieldset><legend>Services</legend>${r.items.map(i=>`<label class="desk-service-choice"><input type="checkbox" data-desk-item="${escapeHtml(i.id)}" ${i.delivered||!r.can_deliver?'disabled':''}> ${escapeHtml(i.service)} × ${i.quantity} — ${i.delivered?'Service delivered':'Not yet used'}</label>`).join('')}</fieldset><label>Service notes (optional)<textarea data-desk-notes maxlength="500"></textarea></label><button type="button" class="teal-button" data-desk-deliver disabled>Confirm service delivery</button>${r.payment_status==='confirmed'?` <a class="pending-outline" href="/paypoint/api/v1/receipts/${encodeURIComponent(r.id)}/print/" target="_blank" rel="noopener">Print receipt</a>`:''}${!r.can_deliver&&r.items.some(i=>!i.delivered)?'<p>Delivery requires an authorized department supervisor or finance administrator and a fully paid, undisputed invoice.</p>':''}`;
+  };
+  const check=async(reference)=>{
+    const version=++checkVersion;selected=null;result.textContent='Checking receipt with the server…';message('');
+    try{
+      const row=await api('department-desk/receipts/'+encodeURIComponent(reference)+'/verify/'+query(),{method:'POST',body:'{}'});
+      if(version!==checkVersion||!root.isConnected)return;
+      selected=row;renderChecked();message(row.eligible_for_delivery?'Receipt checked. Review unused services before delivery.':'Receipt cannot currently authorize service delivery.');
+    }catch(error){if(version===checkVersion&&root.isConnected){result.textContent='No eligible receipt was verified for this department.';message(error.message);}}
+  };
+  form.addEventListener('submit',event=>{event.preventDefault();const reference=form.elements.receipt.value.trim();if(reference)check(reference);});
+  department.addEventListener('change',()=>{checkVersion++;selected=null;page=1;message('');form.elements.receipt.value='';result.innerHTML='<h2>Receipt check</h2><p>Check a receipt in the selected department.</p>';load();});
+  period.addEventListener('change',()=>{page=1;load();});
+  root.addEventListener('change',event=>{if(event.target.matches('[data-desk-item]'))root.querySelector('[data-desk-deliver]').disabled=!root.querySelector('[data-desk-item]:checked');});
+  root.addEventListener('click',async event=>{
+    const pick=event.target.closest('[data-desk-reference]');if(pick){form.elements.receipt.value=pick.dataset.deskReference;check(pick.dataset.deskReference);}
+    if(event.target.closest('[data-desk-prev]')&&hasPrevious){page--;load();}
+    if(event.target.closest('[data-desk-next]')&&hasNext){page++;load();}
+    const deliver=event.target.closest('[data-desk-deliver]');
+    if(deliver&&selected&&!deliver.disabled){
+      const snapshot=selected,version=checkVersion,chosenDepartment=department.value,items=[...root.querySelectorAll('[data-desk-item]:checked')].map(i=>i.dataset.deskItem),notes=root.querySelector('[data-desk-notes]').value.trim();
+      deliver.disabled=true;department.disabled=true;
+      try{
+        for(const id of items)await api('department-desk/service-items/'+encodeURIComponent(id)+'/deliver/?department='+encodeURIComponent(chosenDepartment),{method:'POST',body:JSON.stringify({receipt:snapshot.id,notes})});
+        if(version===checkVersion&&root.isConnected){await check(snapshot.receipt_number);message('Service delivery recorded. Used services cannot be delivered again.');await load();}
+      }catch(error){if(root.isConnected&&version===checkVersion){await check(snapshot.receipt_number);message('Delivery update: '+error.message);await load();}}
+      finally{department.disabled=false;}
+    }
+  });
+  await load();
+}
+async function legacyRecordPaymentPreview() {
   const fetchAll = async name => {
     let data = await api(`${name}/?page_size=100`),
       items = [...list(data)];
@@ -511,7 +728,7 @@ async function recordPaymentPreview() {
   fees();
   recent();
 }
-async function departmentDesk() {
+async function legacyDepartmentDesk() {
   const fetchAll = async resource => {
     let data = await api(`${resource}/?page_size=100`),
       items = [...list(data)];
